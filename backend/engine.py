@@ -40,10 +40,21 @@ def start_firewall_fun():
                 receiver = packet.dst_addr
 
                 if sender in blocked_ips_list or receiver in blocked_ips_list:
-                    print(f"BLOCKED: {sender} tried to communicate with {receiver}", flush=True)
+                    print(f"❌ BLOCKED: {sender} tried to communicate with {receiver}", flush=True)
                     continue 
                 
-                network_tap.send(packet)
+                # Error came when hotspot was turned on so fixed that.
+                # Try to send the packet, but gracefully ignore network adapter changes
+                try:
+                    print(f"✅ ALLOWED: {sender} tried to communicate with {receiver}", flush=True)
+                    network_tap.send(packet)
+                except OSError as e:
+                    # WinError 87 happens if network routes change (like turning on a hotspot)
+                    # We just ignore it and let the network resend the packet naturally.
+                    if getattr(e, 'winerror', None) == 87:
+                        pass 
+                    else:
+                        print(f"Warning: Dropped a packet due to OS Error: {e}")
 
     except PermissionError:
         print("ERROR: You forgot to run the Terminal as Administrator.")
