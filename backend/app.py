@@ -1,4 +1,4 @@
-from fastapi import FastAPI, Request, HTTPException
+from fastapi import FastAPI, Request, HTTPException, Body
 from fastapi.middleware.cors import CORSMiddleware
 import uvicorn
 
@@ -17,7 +17,7 @@ async def get_ips():
     return {"blocked_ips": blocked_ip}
 
 @app.post("/block_ip")
-async def block_ip(request: Request):
+async def block_ip(request: Request,data: dict = Body(...)):
     data = await request.json()
     ip = data.get("ip")
     if not ip:
