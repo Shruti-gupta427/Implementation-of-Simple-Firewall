@@ -22,6 +22,16 @@ def setup_database():
             timestamp DATETIME DEFAULT CURRENT_TIMESTAMP
         )
     ''')
+
+    cursor.execute('''
+        CREATE TABLE IF NOT EXISTS firewall_rules (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            ip_address TEXT NOT NULL,
+            port INTEGER DEFAULT NULL,       
+            protocol TEXT DEFAULT 'ANY',     
+            timestamp DATETIME DEFAULT CURRENT_TIMESTAMP
+        )
+    ''')
     
     connection.commit()
     connection.close()

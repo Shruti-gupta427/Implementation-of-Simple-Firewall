@@ -21,23 +21,36 @@ app.add_middleware(
 @app.get("/get_list_blocked_ips")
 async def get_ips():
     conn = get_db_connection()
-    rows = conn.execute('SELECT ip_address FROM blocked_ips').fetchall()
+    rows = conn.execute('SELECT ip_address, port, protocol FROM firewall_rules').fetchall()
     conn.close()
-    return {"blocked_ips": [row['ip_address'] for row in rows]}
+    rules = []
+    for row in rows:
+        rules.append({
+            "ip_address": row['ip_address'],
+            "port": row['port'],
+            "protocol": row['protocol']
+        })
+    return {"blocked_ips": rules}
 
 @app.post("/block_ip")
 async def block_ip(request: Request,data: dict = Body(...)):
     ip = data.get("ip")
+    port = data.get("port")          
+    protocol = data.get("protocol", "ANY").upper()
     if not ip:
         raise HTTPException(status_code=400, detail="No IP provided")
     
     conn = get_db_connection()
     try:
-        conn.execute('INSERT INTO blocked_ips (ip_address) VALUES (?)', (ip,))
-        conn.execute('INSERT INTO system_logs (ip_address, action) VALUES (?, ?)', (ip, 'BLOCKED'))
+        conn.execute('''
+            INSERT INTO firewall_rules (ip_address, port, protocol) 
+            VALUES (?, ?, ?)
+        ''', (ip, port, protocol))
+        action_msg = f"BLOCKED {protocol}:{port if port else 'ALL'}"
+        conn.execute('INSERT INTO logs (ip_address, action) VALUES (?, ?)', (ip, action_msg))
         conn.commit()
-        print(f"BLOCKED: {ip}")
-        return {"status": "success", "blocked": ip}
+        return {"status": "success", "rule": f"{protocol} on {ip}:{port if port else 'ALL'}"}
+    
     except sqlite3.IntegrityError:
         return {"status": "error", "message": "IP is already in the block list"}
     finally:
@@ -76,14 +89,23 @@ async def check_ip(ip: str):
 
 @app.post("/clear_all")
 async def clear_all():
-    """The 'Panic Button' - Wipes only the active block list."""
     conn = get_db_connection()
+    # 1. Count how many we are about to unblock for the logs
+    count_row = conn.execute('SELECT COUNT(*) FROM blocked_ips').fetchone()
+    count = count_row[0]
+    
+    # 2. Perform the wipe
     conn.execute('DELETE FROM blocked_ips')
-    conn.execute('INSERT INTO system_logs (ip_address, action) VALUES (?, ?)', ('SYSTEM', 'FLUSH_ALL'))
+    
+    # 3. Log exactly how many were cleared
+    log_message = f"FLUSH_ALL_{count}_IPS"
+    conn.execute('INSERT INTO system_logs (ip_address, action) VALUES (?, ?)', ('SYSTEM', log_message))
+    
     conn.commit()
     conn.close()
-    print("ALERT: Active block list cleared by Admin")
-    return {"status": "success", "message": "All IPs cleared from active blocking"}
+    
+    print(f"🚨 ALERT: {count} IPs cleared from active blocking by Admin")
+    return {"status": "success", "message": f"Cleared {count} IPs"}
 
 if __name__ == "__main__":
     uvicorn.run(app, host="127.0.0.1", port=5000)
