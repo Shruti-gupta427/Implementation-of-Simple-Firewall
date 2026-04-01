@@ -74,7 +74,7 @@ def packet_bouncer(layer_name, layer_enum):
 
                 if should_drop:
                     current_time = time.time()
-                    log_key = f"{sender}-{receiver}-{match_reason}"
+                    log_key = f"[{layer_name}]-{sender}-{receiver}-{match_reason}" # added layer_name in the cache so that we dont get 2 block messages for hotspot. 
                     
                     if log_key not in recent_blocks or (current_time - recent_blocks.get(log_key, 0)) > 2:
                         print(f"[{layer_name}] Blocked: {sender} -> {receiver} | because {match_reason}", flush=True)
