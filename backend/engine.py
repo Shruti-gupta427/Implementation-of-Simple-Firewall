@@ -4,24 +4,24 @@ import time
 import threading
 import sys
 
-blocked_ips_list = ["8.8.8.8"]
+blocked_rules_list = []
 recent_blocks = {} # Cache to prevent duplicate print spam
 
 def get_blocked_ips():
     try:
-        response = requests.get("http://127.0.0.1:5000/get_list_blocked_ips", timeout=0.2)
+        response = requests.get("http://127.0.0.1:5000/get_list_blocked_ips", timeout=0.5)
         if response.status_code == 200:
             return response.json().get("blocked_ips", [])
     except Exception:
-        return ["8.8.8.8"]
+        return None
     return []
 
 def background_api_checker():
-    global blocked_ips_list
+    global blocked_rules_list
     while True:
-        new_list = get_blocked_ips()
-        if new_list:
-            blocked_ips_list = new_list
+        new_rules = get_blocked_ips()
+        if new_rules is not None:
+            blocked_rules_list = new_rules 
         time.sleep(1)
 
 # --- NEW: A reusable worker function that can listen on any network layer ---
@@ -37,17 +37,49 @@ def packet_bouncer(layer_name, layer_enum):
 
                 sender = packet.src_addr
                 receiver = packet.dst_addr
+                should_drop = False
+                match_reason = ""
 
-                if sender in blocked_ips_list or receiver in blocked_ips_list:
+                # Layer 4 (Transport layer inspection)
+                for rule in blocked_rules_list:
+                    rule_ip = rule.get("ip_address")
+                    rule_port = rule.get("port")    
+                    rule_proto = rule.get("protocol", "ANY").upper()
+
+                    # match ip 
+                    if sender == rule_ip or receiver == rule_ip:
+                        
+                        # match protocol & port
+                        if rule_proto == "ANY":
+                            should_drop = True
+                            match_reason = "IP_BLOCK_ALL"
+                        
+                        elif rule_proto == "TCP" and packet.tcp:
+                            # if rule_port is None, block ALL TCP. otherwise, match specific port.
+                            if rule_port is None or packet.tcp.src_port == rule_port or packet.tcp.dst_port == rule_port:
+                                should_drop = True
+                                match_reason = f"TCP_PORT_{rule_port if rule_port else 'ALL'}"
+                        
+                        elif rule_proto == "UDP" and packet.udp:
+                            if rule_port is None or packet.udp.src_port == rule_port or packet.udp.dst_port == rule_port:
+                                should_drop = True
+                                match_reason = f"UDP_PORT_{rule_port if rule_port else 'ALL'}"
+                        
+                        elif rule_proto == "ICMP" and packet.icmp:
+                            should_drop = True
+                            match_reason = "ICMP_BLOCK"
+
+                    if should_drop:
+                        break # No need to check other rules for this packet
+
+                if should_drop:
                     current_time = time.time()
-                    log_key = f"[{layer_name}]-{sender}-{receiver}"
+                    log_key = f"{sender}-{receiver}-{match_reason}"
                     
-                    # Print cache logic to prevent log spam
-                    if log_key not in recent_blocks or (current_time - recent_blocks.get(log_key, 0)) > 1:
-                        print(f"[{layer_name}] BLOCKED: {sender} tried to communicate with {receiver}", flush=True)
+                    if log_key not in recent_blocks or (current_time - recent_blocks.get(log_key, 0)) > 2:
+                        print(f"[{layer_name}] Blocked: {sender} -> {receiver} | because {match_reason}", flush=True)
                         recent_blocks[log_key] = current_time 
-                    
-                    continue # Drop the packet
+                    continue 
                 
                 try:
                     network_tap.send(packet)
