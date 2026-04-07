@@ -7,10 +7,17 @@ echo 🛡️ Starting Simple Firewall Full-Stack...
 :: 1. Check for Node.js
 node -v >nul 2>&1
 if %errorlevel% neq 0 (
-    echo ❌ Node.js not found. Installing...
-    powershell -Command "Invoke-WebRequest -Uri 'https://nodejs.org/dist/v20.11.0/node-v20.11.0-x64.msi' -OutFile 'node_installer.msi'"
-    msiexec.exe /i node_installer.msi /qn /norestart
-    echo ✅ Node.js installed. Restart this terminal to update PATH.
+    echo ❌ Node.js not found. 
+    echo 📥 Requesting Admin rights to install Node.js...
+    
+    :: Download the installer
+    powershell -Command "Invoke-WebRequest -Uri 'https://nodejs.org/dist/v20.11.0/node-v20.11.0-x64.msi' -OutFile '%temp%\node_installer.msi'"
+    
+    :: ✨ NEW: Explicitly trigger an Admin prompt for the installer
+    powershell -Command "Start-Process msiexec.exe -ArgumentList '/i \"%temp%\node_installer.msi\" /qn /norestart' -Verb RunAs -Wait"
+    
+    echo ✅ Installation command sent. 
+    echo ⚠️  IMPORTANT: Please RESTART this terminal window now to refresh your PATH!
     pause
     exit
 )
