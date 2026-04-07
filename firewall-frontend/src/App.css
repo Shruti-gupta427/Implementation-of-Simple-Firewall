@@ -299,6 +299,8 @@ body,
   font-family: "Courier New", Courier, monospace;
   font-size: 12px;
   line-height: 1.45;
+  min-height: 180px;
+  max-height: 38vh;
 }
 
 .live-log__line {
@@ -311,6 +313,108 @@ body,
 .live-log__empty {
   color: #64748b;
   font-style: italic;
+}
+
+.rule-panel {
+  border-top: 1px solid rgba(148, 163, 184, 0.2);
+  padding: 10px 12px 12px;
+  background: rgba(15, 23, 42, 0.55);
+}
+
+.rule-panel__title {
+  margin: 0 0 8px;
+  font-size: 13px;
+  font-family: "Courier New", Courier, monospace;
+  color: #bfdbfe;
+}
+
+.rule-form {
+  display: grid;
+  grid-template-columns: 1fr;
+  gap: 6px;
+}
+
+.rule-input {
+  width: 100%;
+  border: 1px solid rgba(148, 163, 184, 0.35);
+  border-radius: 8px;
+  padding: 8px 10px;
+  background: rgba(2, 6, 23, 0.8);
+  color: #e2e8f0;
+  font-size: 12px;
+}
+
+.rule-btn {
+  border: 1px solid rgba(34, 197, 94, 0.55);
+  border-radius: 8px;
+  padding: 8px 10px;
+  font-size: 12px;
+  color: #d1fae5;
+  background: rgba(22, 163, 74, 0.22);
+  cursor: pointer;
+}
+
+.rule-btn:disabled,
+.rule-delete:disabled {
+  opacity: 0.55;
+  cursor: not-allowed;
+}
+
+.rule-message {
+  margin-top: 8px;
+  font-size: 12px;
+  color: #fcd34d;
+  font-family: "Courier New", Courier, monospace;
+}
+
+.rules-table {
+  margin-top: 10px;
+  border: 1px solid rgba(148, 163, 184, 0.25);
+  border-radius: 8px;
+  overflow: hidden;
+}
+
+.rules-head,
+.rules-row {
+  display: grid;
+  grid-template-columns: 1.6fr 0.7fr 0.7fr 0.8fr;
+  gap: 8px;
+  align-items: center;
+  padding: 8px 10px;
+  font-size: 12px;
+  font-family: "Courier New", Courier, monospace;
+}
+
+.rules-head {
+  background: rgba(30, 41, 59, 0.7);
+  color: #93c5fd;
+  border-bottom: 1px solid rgba(148, 163, 184, 0.2);
+}
+
+.rules-row {
+  color: #d1d5db;
+  border-bottom: 1px solid rgba(148, 163, 184, 0.12);
+}
+
+.rules-row:last-child {
+  border-bottom: none;
+}
+
+.rule-delete {
+  border: 1px solid rgba(248, 113, 113, 0.55);
+  border-radius: 6px;
+  padding: 5px 8px;
+  font-size: 11px;
+  color: #fecaca;
+  background: rgba(153, 27, 27, 0.2);
+  cursor: pointer;
+}
+
+.rules-empty {
+  padding: 10px;
+  font-size: 12px;
+  color: #94a3b8;
+  font-family: "Courier New", Courier, monospace;
 }
 
 @media (max-width: 1100px) {

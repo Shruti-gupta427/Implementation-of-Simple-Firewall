@@ -68,6 +68,12 @@ function App() {
   const [now, setNow] = useState(Date.now());
   const [connectionMode, setConnectionMode] = useState<ConnectionMode>("connecting");
   const [blockedRuleCount, setBlockedRuleCount] = useState(0);
+  const [rules, setRules] = useState<BackendRule[]>([]);
+  const [ruleIp, setRuleIp] = useState("");
+  const [rulePort, setRulePort] = useState("");
+  const [ruleProtocol, setRuleProtocol] = useState("ANY");
+  const [ruleMessage, setRuleMessage] = useState("");
+  const [ruleBusy, setRuleBusy] = useState(false);
   const [allowedCount, setAllowedCount] = useState(0);
   const [blockedCount, setBlockedCount] = useState(0);
   const [serverHits, setServerHits] = useState<Record<ServerType, number>>({
@@ -112,8 +118,10 @@ function App() {
       const rulesJson = (await rulesRes.json()) as { blocked_ips?: BackendRule[] };
       const logsJson = (await logsRes.json()) as { logs?: BackendLog[] };
 
-      const ruleCount = Array.isArray(rulesJson.blocked_ips) ? rulesJson.blocked_ips.length : 0;
+      const rulesList = Array.isArray(rulesJson.blocked_ips) ? rulesJson.blocked_ips : [];
+      const ruleCount = rulesList.length;
       setBlockedRuleCount(ruleCount);
+      setRules(rulesList);
 
       const serverLogs = Array.isArray(logsJson.logs) ? logsJson.logs : [];
       const ordered = [...serverLogs].reverse();
@@ -147,6 +155,69 @@ function App() {
         setConnectionMode("offline");
       }
       return false;
+    }
+  };
+
+  const submitRule = async (event: React.FormEvent<HTMLFormElement>) => {
+    event.preventDefault();
+    const ip = ruleIp.trim();
+    if (!ip) {
+      setRuleMessage("IP or subnet is required.");
+      return;
+    }
+
+    const parsedPort = rulePort.trim() === "" ? null : Number(rulePort);
+    if (parsedPort !== null && (!Number.isInteger(parsedPort) || parsedPort < 1 || parsedPort > 65535)) {
+      setRuleMessage("Port must be between 1 and 65535, or empty for ALL.");
+      return;
+    }
+
+    setRuleBusy(true);
+    setRuleMessage("");
+    try {
+      const res = await fetch(`${apiBase}/block_ip`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          ip,
+          port: parsedPort,
+          protocol: ruleProtocol,
+        }),
+      });
+      const data = (await res.json()) as { status?: string; message?: string; rule?: string };
+      if (data.status === "success") {
+        setRuleMessage(`SUCCESS: ${data.rule ?? "Rule added."}`);
+        setRuleIp("");
+        setRulePort("");
+        setRuleProtocol("ANY");
+        await syncSnapshot();
+      } else {
+        setRuleMessage(`NOTICE: ${data.message ?? "Failed to add rule."}`);
+      }
+    } catch {
+      setRuleMessage("ERROR: Could not connect to the API.");
+    } finally {
+      setRuleBusy(false);
+    }
+  };
+
+  const removeRulesByIp = async (ip: string) => {
+    setRuleBusy(true);
+    setRuleMessage("");
+    try {
+      const res = await fetch(`${apiBase}/unblock_ip/${encodeURIComponent(ip)}`, { method: "DELETE" });
+      if (res.ok) {
+        setRuleMessage(`SUCCESS: Removed all rules for ${ip}`);
+        await syncSnapshot();
+      } else if (res.status === 404) {
+        setRuleMessage(`NOTICE: No rules found for ${ip}`);
+      } else {
+        setRuleMessage("ERROR: Could not delete rule.");
+      }
+    } catch {
+      setRuleMessage("ERROR: Could not connect to the API.");
+    } finally {
+      setRuleBusy(false);
     }
   };
 
@@ -332,6 +403,67 @@ function App() {
               </div>
             ))
           )}
+        </div>
+        <div className="rule-panel">
+          <h3 className="rule-panel__title">Rule Dashboard</h3>
+          <form className="rule-form" onSubmit={submitRule}>
+            <input
+              className="rule-input"
+              placeholder="IP or subnet (e.g. 1.1.1.1 or 10.0.0.0/24)"
+              value={ruleIp}
+              onChange={(e) => setRuleIp(e.target.value)}
+              disabled={ruleBusy}
+            />
+            <input
+              className="rule-input"
+              placeholder="Port (empty = ALL)"
+              value={rulePort}
+              onChange={(e) => setRulePort(e.target.value)}
+              disabled={ruleBusy}
+            />
+            <select
+              className="rule-input"
+              value={ruleProtocol}
+              onChange={(e) => setRuleProtocol(e.target.value)}
+              disabled={ruleBusy}
+            >
+              <option value="ANY">ANY</option>
+              <option value="TCP">TCP</option>
+              <option value="UDP">UDP</option>
+              <option value="ICMP">ICMP</option>
+            </select>
+            <button className="rule-btn" type="submit" disabled={ruleBusy}>
+              Add Rule
+            </button>
+          </form>
+          {ruleMessage ? <div className="rule-message">{ruleMessage}</div> : null}
+          <div className="rules-table">
+            <div className="rules-head">
+              <span>IP / Subnet</span>
+              <span>Port</span>
+              <span>Proto</span>
+              <span>Action</span>
+            </div>
+            {rules.length === 0 ? (
+              <div className="rules-empty">No active rules.</div>
+            ) : (
+              rules.map((rule, idx) => (
+                <div className="rules-row" key={`${rule.ip_address}-${rule.port ?? "ALL"}-${rule.protocol}-${idx}`}>
+                  <span>{rule.ip_address}</span>
+                  <span>{rule.port ?? "ALL"}</span>
+                  <span>{rule.protocol}</span>
+                  <button
+                    className="rule-delete"
+                    type="button"
+                    onClick={() => void removeRulesByIp(rule.ip_address)}
+                    disabled={ruleBusy}
+                  >
+                    Delete
+                  </button>
+                </div>
+              ))
+            )}
+          </div>
         </div>
       </aside>
     </div>
