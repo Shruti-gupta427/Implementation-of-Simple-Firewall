@@ -4,20 +4,26 @@ echo 🛡️ Starting Simple Firewall Full-Stack...
 
 :: --- 🚀 STEP 0: PRE-FLIGHT CHECKS ---
 
-:: 1. Check for Node.js
+:: 1. Check for Node.js and Verify Version (Vite requires v18/v20+)
 node -v >nul 2>&1
 if %errorlevel% neq 0 (
-    echo ❌ Node.js not found. 
-    echo 📥 Requesting Admin rights to install Node.js...
+    set NEED_NODE=1
+) else (
+    for /f "tokens=1 delims=v." %%a in ('node -v') do set NODE_MAJOR=%%a
+    if %%a lss 20 set NEED_NODE=1
+)
+
+if "%NEED_NODE%"=="1" (
+    echo ❌ Node.js is missing or outdated (Vite needs v20+^). 
+    echo 📥 Downloading Node.js v20 LTS...
     
-    :: Download the installer
     powershell -Command "Invoke-WebRequest -Uri 'https://nodejs.org/dist/v20.11.0/node-v20.11.0-x64.msi' -OutFile '%temp%\node_installer.msi'"
     
-    :: ✨ NEW: Explicitly trigger an Admin prompt for the installer
+    echo 🔐 Requesting Admin rights to upgrade Node...
     powershell -Command "Start-Process msiexec.exe -ArgumentList '/i \"%temp%\node_installer.msi\" /qn /norestart' -Verb RunAs -Wait"
     
-    echo ✅ Installation command sent. 
-    echo ⚠️  IMPORTANT: Please RESTART this terminal window now to refresh your PATH!
+    echo ✅ Node.js v20.11.0 installed.
+    echo ⚠️  IMPORTANT: You MUST RESTART this terminal now or the dashboard will fail!
     pause
     exit
 )
