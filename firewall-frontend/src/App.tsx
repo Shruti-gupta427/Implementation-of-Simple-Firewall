@@ -6,7 +6,7 @@ type BackendMessage = {
   protocol?: string;
   source_ip?: string;
   destination_ip?: string;
-  server?: "WEB" | "EMAIL" | "DNS";
+  device?: string;
   service?: string;
   [key: string]: unknown;
 };
@@ -16,12 +16,12 @@ type LogLine = {
   text: string;
 };
 
-type ServerType = "WEB" | "EMAIL" | "DNS";
+type DeviceType = "LAPTOP" | "PHONE";
 
 type PacketAnim = {
   id: number;
   blocked: boolean;
-  server: ServerType;
+  device: DeviceType; 
   protocol: string;
   createdAt: number;
 };
@@ -40,26 +40,16 @@ type BackendLog = {
 
 type ConnectionMode = "connecting" | "ws" | "polling" | "offline";
 
-function pickServer(msg: BackendMessage): ServerType {
-  const label = String(msg.server ?? msg.service ?? "").toUpperCase();
-  if (label.includes("MAIL") || label.includes("SMTP") || label.includes("EMAIL")) {
-    return "EMAIL";
-  }
-  if (label.includes("DNS")) {
-    return "DNS";
-  }
-  return "WEB";
+function pickDevice(msg: BackendMessage): DeviceType {
+  return String(msg.device).toUpperCase() === "PHONE" ? "PHONE" : "LAPTOP";
 }
 
-function inferServerFromText(text: string): ServerType {
+function inferDeviceFromText(text: string): DeviceType {
   const value = text.toUpperCase();
-  if (value.includes("SMTP") || value.includes("MAIL") || value.includes("EMAIL")) {
-    return "EMAIL";
+  if (value.includes("PHONE") || value.includes("HOTSPOT")) {
+    return "PHONE";
   }
-  if (value.includes("DNS")) {
-    return "DNS";
-  }
-  return "WEB";
+  return "LAPTOP";
 }
 
 function App() {
@@ -74,13 +64,18 @@ function App() {
   const [ruleProtocol, setRuleProtocol] = useState("ANY");
   const [ruleMessage, setRuleMessage] = useState("");
   const [ruleBusy, setRuleBusy] = useState(false);
+  
   const [allowedCount, setAllowedCount] = useState(0);
   const [blockedCount, setBlockedCount] = useState(0);
-  const [serverHits, setServerHits] = useState<Record<ServerType, number>>({
-    WEB: 0,
-    EMAIL: 0,
-    DNS: 0,
+  
+  const [deviceHits, setDeviceHits] = useState<Record<DeviceType, number>>({
+    LAPTOP: 0,
+    PHONE: 0,
   });
+
+  // ✨ NEW: State to track if the Hotspot is active
+  const [isPhoneConnected, setIsPhoneConnected] = useState(false);
+  
   const nextId = useRef(1);
   const seenLogKeys = useRef(new Set<string>());
   const apiBase = "http://127.0.0.1:5000";
@@ -93,14 +88,14 @@ function App() {
     setLogs((prev) => [...prev.slice(-59), { id: Date.now() + Math.random(), text }]);
   };
 
-  const spawnPacket = (blocked: boolean, server: ServerType, protocol: string) => {
+  const spawnPacket = (blocked: boolean, device: DeviceType, protocol: string) => {
     const id = nextId.current++;
-    setPackets((prev) => [...prev, { id, blocked, server, protocol, createdAt: Date.now() }]);
+    setPackets((prev) => [...prev, { id, blocked, device, protocol, createdAt: Date.now() }]);
     if (blocked) {
       setBlockedCount((prev) => prev + 1);
     } else {
       setAllowedCount((prev) => prev + 1);
-      setServerHits((prev) => ({ ...prev, [server]: prev[server] + 1 }));
+      setDeviceHits((prev) => ({ ...prev, [device]: prev[device] + 1 }));
     }
   };
 
@@ -111,16 +106,13 @@ function App() {
         fetch(`${apiBase}/get_logs`),
       ]);
 
-      if (!rulesRes.ok || !logsRes.ok) {
-        throw new Error("API snapshot failed");
-      }
+      if (!rulesRes.ok || !logsRes.ok) throw new Error("API snapshot failed");
 
       const rulesJson = (await rulesRes.json()) as { blocked_ips?: BackendRule[] };
       const logsJson = (await logsRes.json()) as { logs?: BackendLog[] };
 
       const rulesList = Array.isArray(rulesJson.blocked_ips) ? rulesJson.blocked_ips : [];
-      const ruleCount = rulesList.length;
-      setBlockedRuleCount(ruleCount);
+      setBlockedRuleCount(rulesList.length);
       setRules(rulesList);
 
       const serverLogs = Array.isArray(logsJson.logs) ? logsJson.logs : [];
@@ -135,25 +127,23 @@ function App() {
 
         const action = String(item.action ?? "").toUpperCase();
         const blocked = action.includes("BLOCKED");
-        const server = inferServerFromText(action);
+        const device = inferDeviceFromText(action);
+        
+        // ✨ NEW: If we see a phone packet in the database, wake up the Phone node
+        if (device === "PHONE") setIsPhoneConnected(true);
+
         const protoMatch = action.match(/\b(TCP|UDP|ICMP|DNS|HTTP|HTTPS|SMTP)\b/);
         const protocol = protoMatch?.[1] ?? "PKT";
         const line = `[${new Date(item.timestamp).toLocaleTimeString()}] ${item.action} ${item.ip_address}`;
         appendLog(line);
 
-        if (blocked) {
-          spawnPacket(true, server, protocol);
-        }
+        if (blocked) spawnPacket(true, device, protocol);
       }
 
-      if (newCount > 0 && connectionMode !== "ws") {
-        setConnectionMode("polling");
-      }
+      if (newCount > 0 && connectionMode !== "ws") setConnectionMode("polling");
       return true;
     } catch {
-      if (connectionMode !== "ws") {
-        setConnectionMode("offline");
-      }
+      if (connectionMode !== "ws") setConnectionMode("offline");
       return false;
     }
   };
@@ -161,15 +151,11 @@ function App() {
   const submitRule = async (event: React.FormEvent<HTMLFormElement>) => {
     event.preventDefault();
     const ip = ruleIp.trim();
-    if (!ip) {
-      setRuleMessage("IP or subnet is required.");
-      return;
-    }
+    if (!ip) return setRuleMessage("IP or subnet is required.");
 
     const parsedPort = rulePort.trim() === "" ? null : Number(rulePort);
     if (parsedPort !== null && (!Number.isInteger(parsedPort) || parsedPort < 1 || parsedPort > 65535)) {
-      setRuleMessage("Port must be between 1 and 65535, or empty for ALL.");
-      return;
+      return setRuleMessage("Port must be between 1 and 65535, or empty for ALL.");
     }
 
     setRuleBusy(true);
@@ -178,11 +164,7 @@ function App() {
       const res = await fetch(`${apiBase}/block_ip`, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({
-          ip,
-          port: parsedPort,
-          protocol: ruleProtocol,
-        }),
+        body: JSON.stringify({ ip, port: parsedPort, protocol: ruleProtocol }),
       });
       const data = (await res.json()) as { status?: string; message?: string; rule?: string };
       if (data.status === "success") {
@@ -236,36 +218,31 @@ function App() {
       try {
         const payload = JSON.parse(event.data) as BackendMessage;
         const blocked = String(payload.status ?? "").toUpperCase() === "BLOCKED";
-        const server = pickServer(payload);
+        const device = pickDevice(payload);
+        
+        // ✨ NEW: Instantly wake up the Phone node if a live WebSocket packet hits it
+        if (device === "PHONE") setIsPhoneConnected(true);
+        
         const protocol = String(payload.protocol ?? "PKT").toUpperCase();
-        spawnPacket(blocked, server, protocol);
+        spawnPacket(blocked, device, protocol);
 
-        const logText = `[${new Date().toLocaleTimeString()}] ${blocked ? "BLOCKED" : "ALLOWED"} ${payload.protocol ?? "PKT"} ${payload.source_ip ?? "?"} -> ${payload.destination_ip ?? "?"} (${server})`;
+        const logText = `[${new Date().toLocaleTimeString()}] ${blocked ? "BLOCKED" : "ALLOWED"} ${payload.protocol ?? "PKT"} ${payload.source_ip ?? "?"} -> ${payload.destination_ip ?? "?"} (${device})`;
         appendLog(logText);
       } catch {
         appendLog(`[WS] Unparsed message: ${String(event.data)}`);
       }
     };
 
-    ws.onerror = () => {
-      appendLog("[WS] Error while receiving data.");
-    };
-
+    ws.onerror = () => appendLog("[WS] Error while receiving data.");
     ws.onclose = () => {
-      if (wsConnected) {
-        appendLog("[WS] Connection closed.");
-      } else {
-        appendLog("[WS] Endpoint unavailable, switching to REST polling.");
-      }
+      if (wsConnected) appendLog("[WS] Connection closed.");
+      else appendLog("[WS] Endpoint unavailable, switching to REST polling.");
       setConnectionMode("polling");
       void syncSnapshot();
-      pollId = window.setInterval(() => {
-        void syncSnapshot();
-      }, 2500);
+      pollId = window.setInterval(() => void syncSnapshot(), 2500);
     };
 
     void syncSnapshot();
-
     return () => {
       ws.close();
       if (pollId) window.clearInterval(pollId);
@@ -279,14 +256,11 @@ function App() {
       setPackets((prev) =>
         prev.filter((packet) => {
           const age = tickNow - packet.createdAt;
-          if (packet.blocked) {
-            return age <= toFirewallMs + blockedShakeMs;
-          }
+          if (packet.blocked) return age <= toFirewallMs + blockedShakeMs;
           return age <= toFirewallMs + toServerMs;
         }),
       );
     }, 33);
-
     return () => window.clearInterval(interval);
   }, []);
 
@@ -295,15 +269,16 @@ function App() {
   const packetViews = useMemo(() => {
     const cloud = { x: 12, y: 50 };
     const firewall = { x: 45, y: 50 };
-    const servers: Record<ServerType, { x: number; y: number }> = {
-      WEB: { x: 84, y: 26 },
-      EMAIL: { x: 84, y: 50 },
-      DNS: { x: 84, y: 74 },
+    
+    // ✨ NEW: If phone is NOT connected, the Laptop Y-axis defaults to perfectly centered (50)
+    const devices: Record<DeviceType, { x: number; y: number }> = {
+      LAPTOP: { x: 84, y: isPhoneConnected ? 35 : 50 },
+      PHONE: { x: 84, y: 65 },
     };
 
     return packets.map((packet) => {
       const age = now - packet.createdAt;
-      const target = servers[packet.server];
+      const target = devices[packet.device];
 
       let x = cloud.x;
       let y = cloud.y;
@@ -331,18 +306,16 @@ function App() {
       }
 
       return {
-        id: packet.id,
-        x,
-        y,
-        color,
-        opacity,
-        phase,
-        label: packet.protocol.slice(0, 5),
+        id: packet.id, x, y, color, opacity, phase, label: packet.protocol.slice(0, 5),
       };
     });
-  }, [now, packets]);
+  }, [now, packets, isPhoneConnected]); // ✨ NEW: Added isPhoneConnected to dependency array!
 
   const firewallUnderAttack = packetViews.some((packet) => packet.phase === "blocked" && packet.opacity > 0.1);
+
+  // ✨ NEW: Dynamic layout variables for seamless transitions
+  const laptopTop = isPhoneConnected ? "35%" : "50%";
+  const laptopRotation = isPhoneConnected ? "rotate(-10deg)" : "rotate(0deg)";
 
   return (
     <div className="app">
@@ -356,32 +329,54 @@ function App() {
         <div className="stats-strip">
           <div className="stat-chip">Allowed: {allowedCount}</div>
           <div className="stat-chip">Blocked: {blockedCount}</div>
-          <div className="stat-chip">Web Hits: {serverHits.WEB}</div>
-          <div className="stat-chip">Email Hits: {serverHits.EMAIL}</div>
-          <div className="stat-chip">DNS Hits: {serverHits.DNS}</div>
+          <div className="stat-chip">Laptop Hits: {deviceHits.LAPTOP}</div>
+          {isPhoneConnected && <div className="stat-chip">Phone Hits: {deviceHits.PHONE}</div>}
         </div>
 
         <div className="diagram">
           <div className="node node--cloud">Internet</div>
           <div className={`node node--firewall ${firewallUnderAttack ? "node--firewall-hit" : ""}`}>Firewall</div>
-          <div className="node node--server node--web">Web Server</div>
-          <div className="node node--server node--email">Email Server</div>
-          <div className="node node--server node--dns">DNS Server</div>
+          
+          <div 
+            className="node node--server node--laptop" 
+            style={{ 
+              top: laptopTop, 
+              backgroundColor: "rgba(56, 189, 248, 0.2)",
+              transition: "top 0.5s ease-in-out" // Gives it a smooth sliding animation!
+            }}
+          >
+            Laptop (Local)
+          </div>
+
+          {/* ✨ NEW: Phone conditionally renders */}
+          {isPhoneConnected && (
+            <div className="node node--server node--phone" style={{ top: "65%", backgroundColor: "rgba(52, 211, 153, 0.2)" }}>
+              Phone (Hotspot)
+            </div>
+          )}
 
           <div className="link link--cloud-fw" />
-          <div className="link link--fw-web" />
-          <div className="link link--fw-email" />
-          <div className="link link--fw-dns" />
+          
+          <div 
+            className="link link--fw-laptop" 
+            style={{ 
+              left: "49%", top: "50%", width: "37%", 
+              transform: laptopRotation,
+              transition: "transform 0.5s ease-in-out" 
+            }} 
+          />
+
+          {isPhoneConnected && (
+            <div className="link link--fw-phone" style={{ left: "49%", top: "50%", width: "37%", transform: "rotate(10deg)" }} />
+          )}
 
           {packetViews.map((packet) => (
             <div
               key={packet.id}
               className={`packet packet--${packet.phase}`}
               style={{
-                left: `${packet.x}%`,
-                top: `${packet.y}%`,
-                backgroundColor: packet.color,
-                opacity: packet.opacity,
+                left: `${packet.x}%`, top: `${packet.y}%`,
+                backgroundColor: packet.color, opacity: packet.opacity,
               }}
             >
               <span className="packet-label">{packet.label}</span>
@@ -397,69 +392,34 @@ function App() {
           {visibleLogs.length === 0 ? (
             <div className="live-log__empty">Waiting for packets...</div>
           ) : (
-            visibleLogs.map((line) => (
-              <div key={line.id} className="live-log__line">
-                {line.text}
-              </div>
-            ))
+            visibleLogs.map((line) => <div key={line.id} className="live-log__line">{line.text}</div>)
           )}
         </div>
         <div className="rule-panel">
           <h3 className="rule-panel__title">Rule Dashboard</h3>
           <form className="rule-form" onSubmit={submitRule}>
-            <input
-              className="rule-input"
-              placeholder="IP or subnet (e.g. 1.1.1.1 or 10.0.0.0/24)"
-              value={ruleIp}
-              onChange={(e) => setRuleIp(e.target.value)}
-              disabled={ruleBusy}
-            />
-            <input
-              className="rule-input"
-              placeholder="Port (empty = ALL)"
-              value={rulePort}
-              onChange={(e) => setRulePort(e.target.value)}
-              disabled={ruleBusy}
-            />
-            <select
-              className="rule-input"
-              value={ruleProtocol}
-              onChange={(e) => setRuleProtocol(e.target.value)}
-              disabled={ruleBusy}
-            >
+            <input className="rule-input" placeholder="IP or subnet (e.g. 1.1.1.1 or 10.0.0.0/24)" value={ruleIp} onChange={(e) => setRuleIp(e.target.value)} disabled={ruleBusy} />
+            <input className="rule-input" placeholder="Port (empty = ALL)" value={rulePort} onChange={(e) => setRulePort(e.target.value)} disabled={ruleBusy} />
+            <select className="rule-input" value={ruleProtocol} onChange={(e) => setRuleProtocol(e.target.value)} disabled={ruleBusy}>
               <option value="ANY">ANY</option>
               <option value="TCP">TCP</option>
               <option value="UDP">UDP</option>
               <option value="ICMP">ICMP</option>
             </select>
-            <button className="rule-btn" type="submit" disabled={ruleBusy}>
-              Add Rule
-            </button>
+            <button className="rule-btn" type="submit" disabled={ruleBusy}>Add Rule</button>
           </form>
           {ruleMessage ? <div className="rule-message">{ruleMessage}</div> : null}
           <div className="rules-table">
             <div className="rules-head">
-              <span>IP / Subnet</span>
-              <span>Port</span>
-              <span>Proto</span>
-              <span>Action</span>
+              <span>IP / Subnet</span><span>Port</span><span>Proto</span><span>Action</span>
             </div>
             {rules.length === 0 ? (
               <div className="rules-empty">No active rules.</div>
             ) : (
               rules.map((rule, idx) => (
                 <div className="rules-row" key={`${rule.ip_address}-${rule.port ?? "ALL"}-${rule.protocol}-${idx}`}>
-                  <span>{rule.ip_address}</span>
-                  <span>{rule.port ?? "ALL"}</span>
-                  <span>{rule.protocol}</span>
-                  <button
-                    className="rule-delete"
-                    type="button"
-                    onClick={() => void removeRulesByIp(rule.ip_address)}
-                    disabled={ruleBusy}
-                  >
-                    Delete
-                  </button>
+                  <span>{rule.ip_address}</span><span>{rule.port ?? "ALL"}</span><span>{rule.protocol}</span>
+                  <button className="rule-delete" type="button" onClick={() => void removeRulesByIp(rule.ip_address)} disabled={ruleBusy}>Delete</button>
                 </div>
               ))
             )}

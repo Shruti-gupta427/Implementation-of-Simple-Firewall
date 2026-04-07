@@ -38,6 +38,14 @@ def packet_bouncer(layer_name, layer_enum):
 
                 sender = packet.src_addr
                 receiver = packet.dst_addr
+
+                # --- ✨ NEW: Whitelist our Local Dev Servers ---
+                if packet.tcp:
+                    if packet.tcp.src_port in [5000, 5173] or packet.tcp.dst_port in [5000, 5173]:
+                        network_tap.send(packet)
+                        continue
+                # -----------------------------------------------
+
                 should_drop = False
                 match_reason = ""
 
@@ -92,12 +100,8 @@ def packet_bouncer(layer_name, layer_enum):
                         print(f"[{layer_name}] Blocked: {sender} -> {receiver} | because {match_reason}", flush=True)
                         recent_blocks[log_key] = current_time 
                         
-                        # --- ✨ NEW: Guess the server type for the React UI ---
-                        server_type = "WEB" # Default to web
-                        if rule_port == 53 or (packet.udp and packet.udp.dst_port == 53):
-                            server_type = "DNS"
-                        elif rule_port in [25, 465, 587, 110, 143, 993, 995]:
-                            server_type = "EMAIL"
+                        # --- ✨ NEW: Route to Laptop or Phone ---
+                        device_target = "LAPTOP" if layer_name == "LOCAL" else "PHONE"
                             
                         # --- ✨ NEW: Shoot the data to FastAPI ---
                         payload = {
@@ -105,9 +109,10 @@ def packet_bouncer(layer_name, layer_enum):
                             "protocol": rule_proto if rule_proto != "ANY" else "PKT",
                             "source_ip": sender,
                             "destination_ip": receiver,
-                            "server": server_type,
+                            "device": device_target, # We send "device" instead of "server"
                             "service": match_reason
                         }
+
                         try:
                             # Send it super fast without waiting around
                             requests.post("http://127.0.0.1:5000/log_packet", json=payload, timeout=0.1)
