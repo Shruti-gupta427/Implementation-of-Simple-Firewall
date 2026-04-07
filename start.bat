@@ -19,8 +19,8 @@ if %errorlevel% neq 0 (
 :: Debug line (you can remove this after it works)
 echo 🔍 Detected Node Major Version: %NODE_MAJOR%
 
-:: Compare numbers: If 0 (missing) or less than 20, trigger install
-if %NODE_MAJOR% LSS 20 set NEED_NODE=1
+:: Compare numbers: If 0 (missing) or less than 24, trigger install
+if %NODE_MAJOR% LSS 24 set NEED_NODE=1
 
 if "%NEED_NODE%"=="1" (
     echo ❌ Node.js is missing or outdated (v%NODE_MAJOR% detected, Vite needs v20+^). 
