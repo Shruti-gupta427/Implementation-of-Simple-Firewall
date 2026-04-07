@@ -3,6 +3,7 @@ import requests
 import time
 import threading
 import sys
+import ipaddress
 
 blocked_rules_list = []
 recent_blocks = {} # Cache to prevent duplicate print spam
@@ -46,8 +47,19 @@ def packet_bouncer(layer_name, layer_enum):
                     rule_port = rule.get("port")    
                     rule_proto = rule.get("protocol", "ANY").upper()
 
-                    # match ip 
-                    if sender == rule_ip or receiver == rule_ip:
+                    # --- ✨ NEW: Subnet and Exact IP Matching ---
+                    ip_matches = False
+                    try:
+                        target_network = ipaddress.ip_network(rule_ip, strict=False)
+                        sender_ip = ipaddress.ip_address(sender)
+                        receiver_ip = ipaddress.ip_address(receiver)
+                        
+                        if sender_ip in target_network or receiver_ip in target_network:
+                            ip_matches = True
+                    except ValueError:
+                        pass # Ignore malformed database entries
+
+                    if ip_matches:
                         
                         # match protocol & port
                         if rule_proto == "ANY":

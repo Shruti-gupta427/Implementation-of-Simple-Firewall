@@ -56,7 +56,8 @@ async def block_ip(request: Request,data: dict = Body(...)):
     finally:
         conn.close()
 
-@app.delete("/unblock_ip/{ip}")
+# ✨ Notice the {ip:path} - This tells FastAPI to accept slashes for Subnets!
+@app.delete("/unblock_ip/{ip:path}")
 async def unblock_ip(ip: str):
     conn = get_db_connection()
     exists = conn.execute('SELECT * FROM firewall_rules WHERE ip_address = ?', (ip,)).fetchone()
@@ -65,12 +66,10 @@ async def unblock_ip(ip: str):
         conn.close()
         raise HTTPException(status_code=404, detail="IP not found in block list")
     
-    # Drops all rules associated with this IP
     conn.execute('DELETE FROM firewall_rules WHERE ip_address = ?', (ip,))
     conn.execute('INSERT INTO system_logs (ip_address, action) VALUES (?, ?)', (ip, 'UNBLOCKED'))
     conn.commit()
     conn.close()
-    print(f"UNBLOCKED: {ip}")
     return {"status": "success", "message": f"IP {ip} has been removed"}
 
 
@@ -81,7 +80,8 @@ async def get_logs():
     conn.close()
     return {"logs": [dict(row) for row in logs]}
 
-@app.get("/check_ip/{ip}")
+# ✨ Added {ip:path} here too
+@app.get("/check_ip/{ip:path}")
 async def check_ip(ip: str):
     conn = get_db_connection()
     row = conn.execute('SELECT 1 FROM firewall_rules WHERE ip_address = ?', (ip,)).fetchone()
