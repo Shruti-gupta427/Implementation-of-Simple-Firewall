@@ -125,6 +125,7 @@ body,
   border: 1px solid rgba(148, 163, 184, 0.5);
   color: #e5e7eb;
   background: rgba(15, 23, 42, 0.85);
+  transition: top 0.5s ease-in-out, left 0.5s ease-in-out;
 }
 
 .node--cloud {
@@ -188,31 +189,7 @@ body,
   animation: flow-line 1.7s linear infinite;
 }
 
-.link--cloud-fw {
-  left: 16%;
-  top: 50%;
-  width: 24%;
-}
-
-.link--fw-web {
-  left: 49%;
-  top: 50%;
-  width: 37%;
-  transform: rotate(-20deg);
-}
-
-.link--fw-email {
-  left: 49%;
-  top: 50%;
-  width: 35%;
-}
-
-.link--fw-dns {
-  left: 49%;
-  top: 50%;
-  width: 37%;
-  transform: rotate(20deg);
-}
+/* Static link classes removed in favor of dynamic SVG overlay */
 
 .packet {
   position: absolute;
