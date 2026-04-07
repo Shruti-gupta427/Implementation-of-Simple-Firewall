@@ -47,7 +47,7 @@ async def block_ip(request: Request,data: dict = Body(...)):
             VALUES (?, ?, ?)
         ''', (ip, port, protocol))
         action_msg = f"BLOCKED {protocol}:{port if port else 'ALL'}"
-        conn.execute('INSERT INTO logs (ip_address, action) VALUES (?, ?)', (ip, action_msg))
+        conn.execute('INSERT INTO system_logs (ip_address, action) VALUES (?, ?)', (ip, action_msg)) # changed logs -> system_logs
         conn.commit()
         return {"status": "success", "rule": f"{protocol} on {ip}:{port if port else 'ALL'}"}
     
