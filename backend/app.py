@@ -59,19 +59,20 @@ async def block_ip(request: Request,data: dict = Body(...)):
 @app.delete("/unblock_ip/{ip}")
 async def unblock_ip(ip: str):
     conn = get_db_connection()
-    # Check if it actually exists first
-    exists = conn.execute('SELECT * FROM blocked_ips WHERE ip_address = ?', (ip,)).fetchone()
+    exists = conn.execute('SELECT * FROM firewall_rules WHERE ip_address = ?', (ip,)).fetchone()
     
     if not exists:
         conn.close()
         raise HTTPException(status_code=404, detail="IP not found in block list")
     
-    conn.execute('DELETE FROM blocked_ips WHERE ip_address = ?', (ip,))
+    # Drops all rules associated with this IP
+    conn.execute('DELETE FROM firewall_rules WHERE ip_address = ?', (ip,))
     conn.execute('INSERT INTO system_logs (ip_address, action) VALUES (?, ?)', (ip, 'UNBLOCKED'))
     conn.commit()
     conn.close()
     print(f"UNBLOCKED: {ip}")
     return {"status": "success", "message": f"IP {ip} has been removed"}
+
 
 @app.get("/get_logs")
 async def get_logs():
@@ -83,29 +84,28 @@ async def get_logs():
 @app.get("/check_ip/{ip}")
 async def check_ip(ip: str):
     conn = get_db_connection()
-    row = conn.execute('SELECT 1 FROM blocked_ips WHERE ip_address = ?', (ip,)).fetchone()
+    row = conn.execute('SELECT 1 FROM firewall_rules WHERE ip_address = ?', (ip,)).fetchone()
     conn.close()
     return {"ip": ip, "is_blocked": bool(row)}
+
 
 @app.post("/clear_all")
 async def clear_all():
     conn = get_db_connection()
-    # 1. Count how many we are about to unblock for the logs
-    count_row = conn.execute('SELECT COUNT(*) FROM blocked_ips').fetchone()
+    count_row = conn.execute('SELECT COUNT(*) FROM firewall_rules').fetchone()
     count = count_row[0]
     
-    # 2. Perform the wipe
-    conn.execute('DELETE FROM blocked_ips')
+    conn.execute('DELETE FROM firewall_rules')
     
-    # 3. Log exactly how many were cleared
-    log_message = f"FLUSH_ALL_{count}_IPS"
+    log_message = f"FLUSH_ALL_{count}_RULES"
     conn.execute('INSERT INTO system_logs (ip_address, action) VALUES (?, ?)', ('SYSTEM', log_message))
     
     conn.commit()
     conn.close()
     
-    print(f"🚨 ALERT: {count} IPs cleared from active blocking by Admin")
-    return {"status": "success", "message": f"Cleared {count} IPs"}
+    print(f"🚨 ALERT: {count} rules cleared from active blocking by Admin")
+    return {"status": "success", "message": f"Cleared {count} rules"}
+
 
 if __name__ == "__main__":
     uvicorn.run(app, host="127.0.0.1", port=5000)
