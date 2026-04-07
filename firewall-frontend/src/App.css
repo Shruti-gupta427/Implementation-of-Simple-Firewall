@@ -125,6 +125,10 @@ body,
   border: 1px solid rgba(148, 163, 184, 0.5);
   color: #e5e7eb;
   background: rgba(15, 23, 42, 0.85);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 6px;
 }
 
 .node--cloud {
@@ -150,10 +154,30 @@ body,
   animation: firewall-hit 0.16s linear infinite;
 }
 
+.node-icon {
+  font-size: 15px;
+  line-height: 1;
+}
+
+.tick {
+  margin-left: 4px;
+  filter: drop-shadow(0 0 5px rgba(34, 197, 94, 0.85));
+}
+
+.impact-fire {
+  position: absolute;
+  right: -12px;
+  top: -14px;
+  font-size: 20px;
+  animation: flame-pop 0.35s ease-in-out infinite;
+}
+
 .node--server {
   left: 84%;
-  width: 130px;
+  width: 150px;
+  height: 52px;
   text-align: center;
+  white-space: nowrap;
 }
 
 .node--web {
@@ -189,38 +213,39 @@ body,
 }
 
 .link--cloud-fw {
-  left: 16%;
+  left: calc(12% + 55px);
   top: 50%;
-  width: 24%;
+  width: calc(33% - 110px);
 }
 
 .link--fw-web {
-  left: 49%;
+  left: calc(45% + 55px);
   top: 50%;
-  width: 37%;
-  transform: rotate(-20deg);
+  width: calc(45% - 112px);
+  transform: rotate(-24deg);
 }
 
 .link--fw-email {
-  left: 49%;
+  left: calc(45% + 55px);
   top: 50%;
-  width: 35%;
+  width: calc(39% - 112px);
 }
 
 .link--fw-dns {
-  left: 49%;
+  left: calc(45% + 55px);
   top: 50%;
-  width: 37%;
-  transform: rotate(20deg);
+  width: calc(45% - 112px);
+  transform: rotate(24deg);
 }
 
 .packet {
   position: absolute;
-  width: 14px;
-  height: 14px;
-  border-radius: 50%;
+  width: 18px;
+  height: 12px;
+  border-radius: 3px;
   transform: translate(-50%, -50%);
-  box-shadow: 0 0 18px currentColor;
+  box-shadow: 0 0 14px rgba(15, 23, 42, 0.45);
+  border: 1px solid rgba(255, 255, 255, 0.45);
   display: grid;
   place-items: center;
 }
@@ -228,22 +253,32 @@ body,
 .packet::after {
   content: "";
   position: absolute;
-  left: -10px;
+  left: 50%;
+  top: 0;
+  width: 3px;
+  height: 100%;
+  transform: translateX(-50%);
+  border-radius: 1px;
+  background: rgba(255, 255, 255, 0.55);
+}
+
+.packet::before {
+  content: "";
+  position: absolute;
+  left: 0;
   top: 50%;
-  width: 10px;
+  width: 100%;
   height: 2px;
   transform: translateY(-50%);
-  border-radius: 999px;
-  background: currentColor;
-  opacity: 0.8;
+  background: rgba(255, 255, 255, 0.4);
 }
 
 .packet--ingress {
-  animation: packet-pulse 0.6s ease-in-out infinite;
+  animation: packet-pulse 1.1s ease-in-out infinite;
 }
 
 .packet--allowed {
-  animation: packet-pulse 0.55s ease-in-out infinite;
+  animation: packet-pulse 1.1s ease-in-out infinite;
 }
 
 .packet--blocked {
@@ -489,4 +524,10 @@ body,
   50% {
     border-color: rgba(96, 165, 250, 0.65);
   }
+}
+
+@keyframes flame-pop {
+  0% { transform: scale(0.9); opacity: 0.8; }
+  50% { transform: scale(1.15); opacity: 1; }
+  100% { transform: scale(0.95); opacity: 0.85; }
 }

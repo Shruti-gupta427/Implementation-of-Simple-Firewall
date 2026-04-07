@@ -85,9 +85,9 @@ function App() {
   const seenLogKeys = useRef(new Set<string>());
   const apiBase = "http://127.0.0.1:5000";
 
-  const toFirewallMs = 1200;
-  const blockedShakeMs = 500;
-  const toServerMs = 1100;
+  const toFirewallMs = 2300;
+  const blockedShakeMs = 900;
+  const toServerMs = 2100;
 
   const appendLog = (text: string) => {
     setLogs((prev) => [...prev.slice(-59), { id: Date.now() + Math.random(), text }]);
@@ -307,7 +307,7 @@ function App() {
 
       let x = cloud.x;
       let y = cloud.y;
-      let color = "#f59e0b";
+      let color = "#fbbf24";
       let opacity = 1;
       let phase: "ingress" | "blocked" | "allowed" = "ingress";
 
@@ -326,7 +326,7 @@ function App() {
         const t = Math.min(1, (age - toFirewallMs) / toServerMs);
         x = firewall.x + (target.x - firewall.x) * t;
         y = firewall.y + (target.y - firewall.y) * t;
-        color = "#22c55e";
+        color = "#34d399";
         phase = "allowed";
       }
 
@@ -343,6 +343,11 @@ function App() {
   }, [now, packets]);
 
   const firewallUnderAttack = packetViews.some((packet) => packet.phase === "blocked" && packet.opacity > 0.1);
+  const serverSuccess = {
+    WEB: packetViews.some((p) => p.phase === "allowed" && p.x > 82 && p.y < 33),
+    EMAIL: packetViews.some((p) => p.phase === "allowed" && p.x > 82 && p.y >= 40 && p.y <= 60),
+    DNS: packetViews.some((p) => p.phase === "allowed" && p.x > 82 && p.y > 67),
+  };
 
   return (
     <div className="app">
@@ -362,11 +367,20 @@ function App() {
         </div>
 
         <div className="diagram">
-          <div className="node node--cloud">Internet</div>
-          <div className={`node node--firewall ${firewallUnderAttack ? "node--firewall-hit" : ""}`}>Firewall</div>
-          <div className="node node--server node--web">Web Server</div>
-          <div className="node node--server node--email">Email Server</div>
-          <div className="node node--server node--dns">DNS Server</div>
+          <div className="node node--cloud"><span className="node-icon">🌐</span> Internet</div>
+          <div className={`node node--firewall ${firewallUnderAttack ? "node--firewall-hit" : ""}`}>
+            <span className="node-icon">🧱</span> Firewall
+            {firewallUnderAttack ? <span className="impact-fire">🔥</span> : null}
+          </div>
+          <div className="node node--server node--web">
+            <span className="node-icon">🖥️</span> Web Server {serverSuccess.WEB ? <span className="tick">✅</span> : null}
+          </div>
+          <div className="node node--server node--email">
+            <span className="node-icon">📧</span> Email Server {serverSuccess.EMAIL ? <span className="tick">✅</span> : null}
+          </div>
+          <div className="node node--server node--dns">
+            <span className="node-icon">🧭</span> DNS Server {serverSuccess.DNS ? <span className="tick">✅</span> : null}
+          </div>
 
           <div className="link link--cloud-fw" />
           <div className="link link--fw-web" />
