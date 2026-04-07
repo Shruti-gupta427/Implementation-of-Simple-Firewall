@@ -15,15 +15,18 @@ def setup_database():
     ''')
 
     # 2. Firewall Rules Table
-    # ip_address is TEXT so it can hold either a single IP ("8.8.8.8") or a Subnet ("10.0.0.0/24")
+    # Drop existing table to apply schema change with direction constraint
+    cursor.execute('DROP TABLE IF EXISTS firewall_rules')
+
     cursor.execute('''
-        CREATE TABLE IF NOT EXISTS firewall_rules (
+        CREATE TABLE firewall_rules (
             id INTEGER PRIMARY KEY AUTOINCREMENT,
             ip_address TEXT NOT NULL,
             port INTEGER DEFAULT NULL,       
             protocol TEXT DEFAULT 'ANY',     
+            direction TEXT DEFAULT 'ANY',
             timestamp DATETIME DEFAULT CURRENT_TIMESTAMP,
-            UNIQUE(ip_address, port, protocol) -- ✨ Prevents duplicate rules!
+            UNIQUE(ip_address, port, protocol, direction) -- ✨ Prevents duplicate rules!
         )
     ''')
     

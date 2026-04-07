@@ -58,14 +58,15 @@ async def log_packet(data: dict = Body(...)):
 @app.get("/get_list_blocked_ips")
 async def get_ips():
     conn = get_db_connection()
-    rows = conn.execute('SELECT ip_address, port, protocol FROM firewall_rules').fetchall()
+    rows = conn.execute('SELECT ip_address, port, protocol, direction FROM firewall_rules').fetchall()
     conn.close()
     rules = []
     for row in rows:
         rules.append({
             "ip_address": row['ip_address'],
             "port": row['port'],
-            "protocol": row['protocol']
+            "protocol": row['protocol'],
+            "direction": row['direction']
         })
     return {"blocked_ips": rules}
 
@@ -74,19 +75,20 @@ async def block_ip(request: Request,data: dict = Body(...)):
     ip = data.get("ip")
     port = data.get("port")          
     protocol = data.get("protocol", "ANY").upper()
+    direction = data.get("direction", "ANY").upper()
     if not ip:
         raise HTTPException(status_code=400, detail="No IP provided")
     
     conn = get_db_connection()
     try:
         conn.execute('''
-            INSERT INTO firewall_rules (ip_address, port, protocol) 
-            VALUES (?, ?, ?)
-        ''', (ip, port, protocol))
-        action_msg = f"BLOCKED {protocol}:{port if port else 'ALL'}"
+            INSERT INTO firewall_rules (ip_address, port, protocol, direction) 
+            VALUES (?, ?, ?, ?)
+        ''', (ip, port, protocol, direction))
+        action_msg = f"BLOCKED {direction} {protocol}:{port if port else 'ALL'}"
         conn.execute('INSERT INTO system_logs (ip_address, action) VALUES (?, ?)', (ip, action_msg)) # changed logs -> system_logs
         conn.commit()
-        return {"status": "success", "rule": f"{protocol} on {ip}:{port if port else 'ALL'}"}
+        return {"status": "success", "rule": f"{direction} {protocol} on {ip}:{port if port else 'ALL'}"}
     
     except sqlite3.IntegrityError:
         return {"status": "error", "message": "IP is already in the block list"}
