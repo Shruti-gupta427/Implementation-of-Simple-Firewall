@@ -24,14 +24,14 @@ if %NODE_MAJOR% LSS 24 set NEED_NODE=1
 
 if "%NEED_NODE%"=="1" (
     echo ❌ Node.js is missing or outdated (v%NODE_MAJOR% detected, Vite needs v20+^). 
-    echo 📥 Downloading Node.js v20 LTS...
+    echo 📥 Downloading Node.js v24 LTS...
     
     powershell -Command "Invoke-WebRequest -Uri 'https://nodejs.org/dist/v24.14.1/node-v24.14.1-x64.msi' -OutFile '%temp%\node_installer.msi'"
     
     echo 🔐 Requesting Admin rights to upgrade Node...
     powershell -Command "Start-Process msiexec.exe -ArgumentList '/i \"%temp%\node_installer.msi\" /qn /norestart' -Verb RunAs -Wait"
     
-    echo ✅ Node.js v20.11.0 installed.
+    echo ✅ Node.js v24.14.1 installed.
     echo ⚠️  IMPORTANT: You MUST RESTART this terminal now!
     pause
     exit
