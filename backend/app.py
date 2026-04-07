@@ -1,4 +1,4 @@
-from fastapi import FastAPI, Request, HTTPException, Body
+from fastapi import FastAPI, Request, HTTPException, Body, WebSocket, WebSocketDisconnect
 from fastapi.middleware.cors import CORSMiddleware
 from datetime import datetime
 import uvicorn
@@ -17,6 +17,43 @@ app.add_middleware(
     allow_methods=["*"],
     allow_headers=["*"],
 )
+
+# --- ✨ NEW: WebSocket Manager for React ---
+class ConnectionManager:
+    def __init__(self):
+        self.active_connections: list[WebSocket] = []
+
+    async def connect(self, websocket: WebSocket):
+        await websocket.accept()
+        self.active_connections.append(websocket)
+
+    def disconnect(self, websocket: WebSocket):
+        self.active_connections.remove(websocket)
+
+    async def broadcast(self, message: dict):
+        for connection in self.active_connections:
+            try:
+                await connection.send_json(message)
+            except Exception:
+                pass
+
+manager = ConnectionManager()
+
+@app.websocket("/ws")
+async def websocket_endpoint(websocket: WebSocket):
+    await manager.connect(websocket)
+    try:
+        while True:
+            await websocket.receive_text() # Keeps the connection alive
+    except WebSocketDisconnect:
+        manager.disconnect(websocket)
+
+@app.post("/log_packet")
+async def log_packet(data: dict = Body(...)):
+    # This receives the drop alert from engine.py and blasts it to React
+    await manager.broadcast(data)
+    return {"status": "broadcasted"}
+
 
 @app.get("/get_list_blocked_ips")
 async def get_ips():

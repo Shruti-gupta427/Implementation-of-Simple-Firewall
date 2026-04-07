@@ -86,11 +86,34 @@ def packet_bouncer(layer_name, layer_enum):
 
                 if should_drop:
                     current_time = time.time()
-                    log_key = f"[{layer_name}]-{sender}-{receiver}-{match_reason}" # added layer_name in the cache so that we dont get 2 block messages for hotspot. 
+                    log_key = f"[{layer_name}]-{sender}-{receiver}-{match_reason}" 
                     
                     if log_key not in recent_blocks or (current_time - recent_blocks.get(log_key, 0)) > 2:
                         print(f"[{layer_name}] Blocked: {sender} -> {receiver} | because {match_reason}", flush=True)
                         recent_blocks[log_key] = current_time 
+                        
+                        # --- ✨ NEW: Guess the server type for the React UI ---
+                        server_type = "WEB" # Default to web
+                        if rule_port == 53 or (packet.udp and packet.udp.dst_port == 53):
+                            server_type = "DNS"
+                        elif rule_port in [25, 465, 587, 110, 143, 993, 995]:
+                            server_type = "EMAIL"
+                            
+                        # --- ✨ NEW: Shoot the data to FastAPI ---
+                        payload = {
+                            "status": "BLOCKED",
+                            "protocol": rule_proto if rule_proto != "ANY" else "PKT",
+                            "source_ip": sender,
+                            "destination_ip": receiver,
+                            "server": server_type,
+                            "service": match_reason
+                        }
+                        try:
+                            # Send it super fast without waiting around
+                            requests.post("http://127.0.0.1:5000/log_packet", json=payload, timeout=0.1)
+                        except requests.exceptions.RequestException:
+                            pass 
+
                     continue 
                 
                 try:
