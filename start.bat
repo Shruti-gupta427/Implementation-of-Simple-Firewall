@@ -4,18 +4,26 @@ echo 🛡️ Starting Simple Firewall Full-Stack...
 
 :: --- 🚀 STEP 0: PRE-FLIGHT CHECKS ---
 
-:: 1. Check for Node.js and Verify Version (Vite requires v18/v20+)
+:: 1. Check for Node.js and Verify Version
 set NEED_NODE=0
+set NODE_MAJOR=0
+
 node -v >nul 2>&1
 if %errorlevel% neq 0 (
     set NEED_NODE=1
 ) else (
+    :: Grab the version, strip the 'v', and pick the first number
     for /f "tokens=1 delims=v." %%a in ('node -v') do set NODE_MAJOR=%%a
-    if %%a lss 20 set NEED_NODE=1
 )
 
+:: Debug line (you can remove this after it works)
+echo 🔍 Detected Node Major Version: %NODE_MAJOR%
+
+:: Compare numbers: If 0 (missing) or less than 20, trigger install
+if %NODE_MAJOR% LSS 20 set NEED_NODE=1
+
 if "%NEED_NODE%"=="1" (
-    echo ❌ Node.js is missing or outdated (Vite needs v20+^). 
+    echo ❌ Node.js is missing or outdated (v%NODE_MAJOR% detected, Vite needs v20+^). 
     echo 📥 Downloading Node.js v20 LTS...
     
     powershell -Command "Invoke-WebRequest -Uri 'https://nodejs.org/dist/v20.11.0/node-v20.11.0-x64.msi' -OutFile '%temp%\node_installer.msi'"
@@ -24,7 +32,7 @@ if "%NEED_NODE%"=="1" (
     powershell -Command "Start-Process msiexec.exe -ArgumentList '/i \"%temp%\node_installer.msi\" /qn /norestart' -Verb RunAs -Wait"
     
     echo ✅ Node.js v20.11.0 installed.
-    echo ⚠️  IMPORTANT: You MUST RESTART this terminal now or the dashboard will fail!
+    echo ⚠️  IMPORTANT: You MUST RESTART this terminal now!
     pause
     exit
 )
