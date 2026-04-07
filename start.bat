@@ -5,6 +5,7 @@ echo 🛡️ Starting Simple Firewall Full-Stack...
 :: --- 🚀 STEP 0: PRE-FLIGHT CHECKS ---
 
 :: 1. Check for Node.js and Verify Version (Vite requires v18/v20+)
+set NEED_NODE=0
 node -v >nul 2>&1
 if %errorlevel% neq 0 (
     set NEED_NODE=1
