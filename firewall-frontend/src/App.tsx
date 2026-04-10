@@ -27,6 +27,20 @@ type PacketAnim = {
   createdAt: number;
 };
 
+type PacketDetails = {
+  source: string;
+  destination: string;
+  type: string;
+  port: string;
+  protocol: string;
+};
+
+type RejectionInfo = {
+  id: number;
+  reason: string;
+  details: PacketDetails;
+};
+
 type BackendRule = {
   ip_address: string;
   port: number | null;
@@ -81,28 +95,81 @@ function App() {
   const [blockedCount, setBlockedCount] = useState(0);
   
   const [phones, setPhones] = useState<DeviceNode[]>([]);
+  const [rejectionInfos, setRejectionInfos] = useState<Record<number, RejectionInfo>>({});
   
   const laptopIps = useRef<Set<string>>(new Set());
   const nextId = useRef(1);
+  const allowedVisualCounter = useRef(0);
   const seenLogKeys = useRef(new Set<string>());
   const apiBase = "http://127.0.0.1:5000";
 
-  const toFirewallMs = 1200;
-  const blockedShakeMs = 500;
-  const toServerMs = 1100;
+  const toFirewallMs = 2500;
+  const blockedShakeMs = 1500;
+  const toServerMs = 2200;
 
   const appendLog = (text: string) => {
     setLogs((prev) => [...prev.slice(-59), { id: Date.now() + Math.random(), text }]);
   };
 
+  const safeText = (value: unknown, fallback: string) => {
+    if (typeof value === "string" && value.trim()) return value.trim();
+    if (typeof value === "number" && Number.isFinite(value)) return String(value);
+    return fallback;
+  };
+
+  const safePort = (value: unknown) => {
+    if (typeof value === "number" && Number.isFinite(value)) return String(value);
+    if (typeof value === "string" && value.trim()) return value.trim();
+    return "N/A";
+  };
+
+  const extractPacketDetails = (payload: BackendMessage, fallbackProtocol: string) => {
+    const source = safeText(payload.source_ip ?? payload.src_ip ?? payload.ip_address, "?");
+    const destination = safeText(payload.destination_ip ?? payload.dest_ip ?? payload.dst_ip, "?");
+    const packetType = safeText(payload.type ?? payload.packet_type ?? payload.service ?? payload.device, "N/A");
+    const protocol = safeText(payload.protocol, fallbackProtocol || "PKT");
+    const port = safePort(
+      payload.port ??
+      payload.destination_port ??
+      payload.dest_port ??
+      payload.dport ??
+      payload.source_port ??
+      payload.src_port ??
+      payload.sport,
+    );
+    return { source, destination, type: packetType, port, protocol };
+  };
+
+  const deriveRejectionReason = (payload: BackendMessage, textFallback: string) => {
+    const reasonCandidate = payload.reason ?? payload.message ?? payload.service;
+    if (typeof reasonCandidate === "string" && reasonCandidate.trim()) {
+      return reasonCandidate.trim();
+    }
+    if (textFallback.trim()) {
+      return textFallback.trim();
+    }
+    const statusText = typeof payload.status === "string" ? payload.status : "";
+    const cleaned = statusText.replace(/^BLOCKED[:\s-]*/i, "").trim();
+    if (cleaned && !/^BLOCKED$/i.test(cleaned)) {
+      return cleaned;
+    }
+    return "Matched firewall block rule.";
+  };
+
   const spawnPacket = (blocked: boolean, deviceCtx: string | null, protocol: string, direction: "INBOUND" | "OUTBOUND") => {
     const id = nextId.current++;
-    setPackets((prev) => [...prev, { id, blocked, deviceCtx, protocol, direction, createdAt: Date.now() }]);
     if (blocked) {
       setBlockedCount((prev) => prev + 1);
     } else {
       setAllowedCount((prev) => prev + 1);
+      // Visual throttle: animate only one out of every 4 allowed packets.
+      allowedVisualCounter.current += 1;
+      if (allowedVisualCounter.current % 4 !== 0) {
+        return id;
+      }
     }
+    setPackets((prev) => [...prev, { id, blocked, deviceCtx, protocol, direction, createdAt: Date.now() }]);
+    return id;
   };
 
   const processPayload = (payload: BackendMessage, textFallback: string) => {
@@ -148,7 +215,30 @@ function App() {
        }
     }
 
-    spawnPacket(blocked, connectedIp, protocol, animDirection);
+    const packetId = spawnPacket(blocked, connectedIp, protocol, animDirection);
+
+    if (blocked) {
+      const details = extractPacketDetails(payload, protocol);
+      setRejectionInfos((prev) => ({
+        ...prev,
+        [packetId]: {
+          id: packetId,
+          reason: deriveRejectionReason(payload, textFallback),
+          details,
+        },
+      }));
+    }
+  };
+
+  const registerBlockedReason = (packetId: number, reason: string, details: PacketDetails) => {
+    setRejectionInfos((prev) => ({
+      ...prev,
+      [packetId]: {
+        id: packetId,
+        reason,
+        details,
+      },
+    }));
   };
 
   const syncSnapshot = async () => {
@@ -183,7 +273,16 @@ function App() {
         const line = `[${new Date(item.timestamp).toLocaleTimeString()}] ${item.action} ${item.ip_address}`;
         appendLog(line);
 
-        spawnPacket(isBlocked, null, protocol, "INBOUND");
+        const packetId = spawnPacket(isBlocked, null, protocol, "INBOUND");
+        if (isBlocked) {
+          registerBlockedReason(packetId, item.action, {
+            source: item.ip_address || "?",
+            destination: "?",
+            type: "Snapshot Log",
+            port: "N/A",
+            protocol,
+          });
+        }
       }
 
       if (newCount > 0 && connectionMode !== "ws") setConnectionMode("polling");
@@ -300,7 +399,6 @@ function App() {
           return age <= toFirewallMs + toServerMs;
         }),
       );
-      
       // ✨ Disconnect devices gracefully if inactive for > 15s
       setPhones((prev) => {
           const active = prev.filter(p => tickNow - p.lastSeen < 15000);
@@ -311,6 +409,23 @@ function App() {
     }, 33);
     return () => window.clearInterval(interval);
   }, []);
+
+  useEffect(() => {
+    setRejectionInfos((prev) => {
+      const activePacketIds = new Set(packets.map((packet) => packet.id));
+      let changed = false;
+      const next: Record<number, RejectionInfo> = {};
+      for (const key of Object.keys(prev)) {
+        const id = Number(key);
+        if (activePacketIds.has(id)) {
+          next[id] = prev[id];
+        } else {
+          changed = true;
+        }
+      }
+      return changed ? next : prev;
+    });
+  }, [packets]);
 
   const visibleLogs = useMemo(() => logs.slice(-18), [logs]);
 
@@ -405,9 +520,12 @@ function App() {
   }, [now, packets, phones, laptopY]);
 
   const firewallUnderAttack = packetViews.some((packet) => packet.phase === "blocked" && packet.opacity > 0.1);
+  const activeBlockedPacket = packetViews.find((packet) => packet.phase === "blocked" && packet.opacity > 0.1);
+  const activeBlockedInfo = activeBlockedPacket ? rejectionInfos[activeBlockedPacket.id] : null;
 
   return (
     <div className="app">
+      <h1 className="app-title">Simple Firewall</h1>
       <section className="network-panel">
         <div className="network-header">
           <span>Simple Firewall Core</span>
@@ -422,6 +540,19 @@ function App() {
         </div>
 
         <div className="diagram">
+          {activeBlockedInfo ? (
+            <div className="reject-reason-box">
+              <div className="reject-reason-box__label">Rejected Packet</div>
+              <div className="reject-reason-box__text">{activeBlockedInfo.reason}</div>
+              <div className="reject-reason-box__grid">
+                <span>Source:</span><span>{activeBlockedInfo.details.source}</span>
+                <span>Destination:</span><span>{activeBlockedInfo.details.destination}</span>
+                <span>Type:</span><span>{activeBlockedInfo.details.type}</span>
+                <span>Port:</span><span>{activeBlockedInfo.details.port}</span>
+                <span>Protocol:</span><span>{activeBlockedInfo.details.protocol}</span>
+              </div>
+            </div>
+          ) : null}
           {/* ✨ Smooth Bezier Curves rendering active paths */}
           <svg style={{ position: "absolute", inset: 0, width: "100%", height: "100%", pointerEvents: "none" }}>
             <path d={renderCurve(cloud.x, cloud.y, firewall.x, firewall.y)} fill="none" stroke="rgba(56, 189, 248, 0.2)" strokeWidth="3" strokeDasharray="6 4" strokeLinecap="round" />
