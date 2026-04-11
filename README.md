@@ -5,6 +5,37 @@ A full-stack packet filtering demo with:
 - React + Vite frontend (`firewall-frontend/`)
 - Packet engine (`backend/engine.py`) that requires Administrator privileges on Windows
 
+## 🔐 Features
+
+### 1. Dual-Layer Protection (Host & Hotspot)
+- **Local Firewall:** Monitors the standard NETWORK layer to protect the host machine from direct threats.  
+- **Hotspot Gateway Security:** Monitors the NETWORK_FORWARD layer, allowing the firewall to act as a secure gateway for connected devices (e.g., phones) and filter their transit traffic.  
+
+---
+
+### 2. Kernel-Level Interception *(Windows Only)*
+> ⚠️ This project currently supports **Windows only**.
+
+- **Deep Packet Inspection (DPI):** Intercepts packets at the kernel level using the **WinDivert driver**, allowing evaluation before they reach the OS socket layer.  
+- **Safe-Port Whitelisting:** Includes a kernel-level driver filter that automatically whitelists ports **5000 (FastAPI)** and **5173 (React)** to ensure uninterrupted management UI connectivity.  
+
+---
+
+### 3. Smart Filtering Logic
+- **Layer 4 Control:** Granular filtering for **TCP, UDP, and ICMP (Ping)** protocols.  
+- **Subnet/CIDR Support:** Ability to block entire IP ranges (e.g., `192.168.1.0/24`) using the `ipaddress` module for scalable security policies.  
+- **Directional Filtering:** Rules can be applied specifically to **INBOUND**, **OUTBOUND**, or **bidirectional** traffic.  
+
+---
+
+### 4. Real-Time Telemetry & Visualization
+- **JSON Emission:** Every packet evaluation emits a structured JSON payload containing status, protocol, source/destination IPs, and target device (Laptop vs. Phone).  
+- **Asynchronous Logging:** Uses a background queue system to ensure logging does not introduce network latency.  
+- **Live Dashboard:** A React-based interface visualizes packets as 3D objects moving from the *Internet Cloud* to *Destination Servers*.  
+
+---
+
+
 ## Quick Start (Recommended)
 
 Use the provided `start.bat` from the project root.
@@ -122,4 +153,13 @@ Without admin privileges, packet capture/injection may fail.
 - `backend/database.py` - Database initialization
 - `backend/requirements.txt` - Python dependencies
 - `firewall-frontend/` - React dashboard
+
+## 👥 Team Members
+
+| Name            | Roll Number   |
+|-----------------|--------------|
+| Shivansh Gupta  | 2024BCS066   |
+| Shruti Gupta    | 2024BCS068   |
+| Shlok Gupta     | 2024BCS067   |
+| Atharva Sawant  | 2024BCS064   |
 
